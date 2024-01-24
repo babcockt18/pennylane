@@ -369,6 +369,74 @@ def _batched_partial_trace_nonrep_indices(density_matrix, indices):
     return reduced_density_matrix
 
 
+def partial_trace_nonrep_indices(matrix, indices):
+    pass
+
+
+def partial_trace(matrix, indices):
+    """Compute the partial trace of a matrix over a set of wires.
+
+    Args:
+        matrix (tensor_like): 3D density matrix tensor. This tensor should be of size
+            ``(batch_dim, 2**N, 2**N)``, for some integer number of wires``N``.
+        indices (list(int)): List of indices to be traced.
+
+    Returns:
+        tensor_like: (reduced) matrix of size ``(batch_dim, 2**len(wires), 2**len(wires))``
+
+    **Example**
+
+    >>> x = np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+    ...               [[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]])
+    >>> partial_trace(x, indices=[0])
+    array([[[1, 0],
+            [0, 0]],
+
+           [[0, 0],
+            [0, 1]]])
+
+    >>> x = tf.Variable([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+    ...                  [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 0]]], dtype=tf.complex128)
+    >>> partial_trace(x, indices=[1])
+    <tf.Tensor: shape=(2, 2, 2), dtype=complex128, numpy=
+    array([[[1.+0.j, 0.+0.j],
+            [0.+0.j, 0.+0.j]],
+
+           [[1.+0.j, 0.+0.j],
+            [0.+0.j, 0.+0.j]]])>
+    """
+    # Autograd does not support same indices sum in backprop, and tensorflow
+    # has a limit of 8 dimensions if same indices are used
+    if get_interface(matrix) in ["autograd", "tensorflow"]:
+        return partial_trace_nonrep_indices(matrix, indices)
+
+    # Dimension and reshape
+    batch_dim, dim = matrix.shape[:2]
+    num_indices = int(np.log2(dim))
+    rho_dim = 2 * num_indices
+
+    matrix = np.reshape(matrix, [batch_dim] + [2] * 2 * num_indices)
+    indices = np.sort(indices)
+
+    # For loop over wires
+    for i, target_index in enumerate(indices):
+        target_index = target_index - i
+        state_indices = ABC[1 : rho_dim - 2 * i + 1]
+        state_indices = list(state_indices)
+
+        target_letter = state_indices[target_index]
+        state_indices[target_index + num_indices - i] = target_letter
+        state_indices = "".join(state_indices)
+
+        einsum_indices = f"a{state_indices}"
+        density_matrix = einsum(einsum_indices, matrix)
+
+    number_wires_sub = num_indices - len(indices)
+    reduced_matrix = np.reshape(
+        matrix, (batch_dim, 2**number_wires_sub, 2**number_wires_sub)
+    )
+    return reduced_matrix
+
 def reduce_statevector(state, indices, check_state=False, c_dtype="complex128"):
     """Compute the density matrix from a state vector.
 

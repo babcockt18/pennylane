@@ -22,6 +22,14 @@ from scipy.sparse import csr_matrix
 
 import pennylane as qml
 from pennylane import numpy as pnp
+from pennylane import math as fn
+from tests.math.test_density_matrices import single_wires_list, multiple_wires_list, permute_two_qubit_dm, c_dtypes
+from tests.math.test_density_matrices import density_matrices as matrices
+
+tf = pytest.importorskip("tensorflow", minversion="2.1")
+torch = pytest.importorskip("torch")
+jax = pytest.importorskip("jax")
+jnp = pytest.importorskip("jax.numpy")
 
 Toffoli_broadcasted = np.tensordot([0.1, -4.2j], Toffoli, axes=0)
 CNOT_broadcasted = np.tensordot([1.4], CNOT, axes=0)
@@ -803,7 +811,7 @@ class TestReduceMatrices:
 
         assert final_wires == expected_wires
         assert qml.math.allclose(reduced_mat, expected_matrix)
-        assert reduced_mat.shape == (2**5, 2**5)
+        assert reduced_mat.shape == (2 ** 5, 2 ** 5)
 
     def test_prod_matrices(self):
         """Test the reduce_matrices function with the dot method."""
@@ -817,4 +825,129 @@ class TestReduceMatrices:
 
         assert final_wires == expected_wires
         assert qml.math.allclose(reduced_mat, expected_matrix)
-        assert reduced_mat.shape == (2**5, 2**5)
+        assert reduced_mat.shape == (2 ** 5, 2 ** 5)
+
+class TestPartialTrace:
+    """Tests for partial_trace function."""
+
+    @pytest.mark.parametrize("matrix, expected_matrix", matrices)
+    @pytest.mark.parametrize("wires", single_wires_list)
+    def test_reduced_dm_with_matrix_single_wires(
+            self, matrix, wires, expected_matrix
+    ):
+        """Test the partial_trace with matrix for single wires."""
+        matrix = fn.reduce_dm(matrix, indices=wires)
+        assert np.allclose(matrix, expected_matrix[wires[0]])
+
+    @pytest.mark.parametrize("matrix", list(zip(*matrices))[0])
+    @pytest.mark.parametrize("wires", multiple_wires_list)
+    def test_reduced_dm_with_matrix_full_wires(self, matrix, wires):
+        """Test the reduced_dm with matrix for full wires."""
+        returned_matrix = fn.reduce_dm(matrix, indices=wires)
+        expected = matrix
+        if wires == [1, 0]:
+            expected = permute_two_qubit_dm(expected)
+        assert np.allclose(returned_matrix, expected)
+
+    @pytest.mark.parametrize("matrix", list(zip(*matrices))[0])
+    @pytest.mark.parametrize("wires", multiple_wires_list)
+    def test_reduce_dm_check(self, matrix, wires):
+        """Test the density matrix from matrices for single wires with state checking"""
+        # pylint: disable=protected-access
+        returned_matrix = fn.quantum.reduce_dm(
+            matrix, indices=wires, check_state=True
+        )
+        expected = matrix
+        if wires == [1, 0]:
+            expected = permute_two_qubit_dm(expected)
+
+        assert np.allclose(returned_matrix, expected)
+
+    def test_matrix_wrong_shape(self):
+        """Test that wrong shaped state vector raises an error with check_state=True"""
+        matrix = [[1, 0, 0], [0, 0, 0], [0, 0, 0]]
+
+        with pytest.raises(ValueError, match="matrix must be of shape"):
+            fn.quantum.reduce_dm(matrix, indices=[0], check_state=True)
+
+    def test_matrix_wrong_trace(self):
+        """Test that matrix with wrong trace raises an error with check_state=True"""
+        matrix = [[0.1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+
+        with pytest.raises(ValueError, match="The trace of the density matrix should be one."):
+            fn.quantum.reduce_dm(matrix, indices=[0], check_state=True)
+
+    def test_matrix_not_hermitian(self):
+        """Test that non hermitian matrix raises an error with check_state=True"""
+        matrix = [[0.1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0.5, 0.9]]
+
+        with pytest.raises(ValueError, match="The matrix is not Hermitian."):
+            fn.quantum.reduce_dm(matrix, indices=[0], check_state=True)
+
+    def test_matrix_not_positive_definite(self):
+        """Test that non hermitian matrix raises an error with check_state=True"""
+        matrix = [[3, 0], [0, -2]]
+
+        with pytest.raises(ValueError, match="The matrix is not positive semi-definite."):
+            fn.quantum.reduce_dm(matrix, indices=[0], check_state=True)
+
+    def test_reduce_statevector_jax_jit(self):
+        """Test jitting the matrix from state vector function."""
+        from jax import jit
+
+        state_vector = jnp.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+
+        jitted_dens_matrix_func = jit(fn.quantum.reduce_dm, static_argnums=[1, 2])
+
+        matrix = jitted_dens_matrix_func(state_vector, indices=(0,), check_state=True)
+        assert np.allclose(matrix, [[1, 0], [0, 0]])
+
+    def test_wrong_shape_jax_jit(self):
+        """Test jitting the matrix from state vector with wrong shape."""
+        # pylint: disable=protected-access
+        from jax import jit
+
+        state_vector = jnp.array([[1, 0, 0], [0, 0, 0], [0, 0, 0]])
+
+        jitted_dens_matrix_func = jit(fn.quantum.reduce_dm, static_argnums=[1, 2])
+
+        with pytest.raises(ValueError, match="Density matrix must be of shape"):
+            jitted_dens_matrix_func(state_vector, indices=(0, 1), check_state=True)
+
+    def test_matrix_tf_jit(self):
+        """Test jitting the matrix from matrix function with Tf."""
+        from functools import partial
+
+        d_mat = tf.Variable(
+            [
+                [1, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+                [0, 0, 0, 0],
+            ],
+            dtype=tf.complex128,
+        )
+        matrix = partial(fn.reduce_dm, indices=[0])
+
+        matrix = tf.function(
+            matrix,
+            jit_compile=True,
+            input_signature=(tf.TensorSpec(shape=(4, 4), dtype=tf.complex128),),
+        )
+        matrix = matrix(d_mat)
+        assert np.allclose(matrix, [[1, 0], [0, 0]])
+
+    @pytest.mark.parametrize("c_dtype", c_dtypes)
+    @pytest.mark.parametrize("matrix", list(zip(*matrices))[0])
+    @pytest.mark.parametrize("wires", single_wires_list)
+    def test_matrix_c_dtype(self, matrix, wires, c_dtype):
+        """Test different complex dtype."""
+        if fn.get_interface(matrix) == "jax" and c_dtype == "complex128":
+            pytest.skip("Jax does not support complex 128")
+        matrix = fn.reduce_dm(matrix, indices=wires, c_dtype=c_dtype)
+        if fn.get_interface(matrix) == "torch":
+            if c_dtype == "complex64":
+                c_dtype = torch.complex64
+            elif c_dtype == "complex128":
+                c_dtype = torch.complex128
+        assert matrix.dtype == c_dtype
