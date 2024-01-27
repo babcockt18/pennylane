@@ -101,7 +101,7 @@ def cov_matrix(prob, obs, wires=None, diag_approx=False):
         w = o.wires.labels if wires is None else wires.indices(o.wires)
         p = marginal_prob(prob, w)
 
-        res = dot(eigvals**2, p) - (dot(eigvals, p)) ** 2
+        res = dot(eigvals ** 2, p) - (dot(eigvals, p)) ** 2
         variances.append(res)
 
     cov = diag(variances)
@@ -247,126 +247,209 @@ def reduce_dm(density_matrix, indices, check_state=False, c_dtype="complex128"):
     return _permute_dense_matrix(density_matrix, sorted(indices), indices, batch_dim)
 
 
-def _batched_partial_trace(density_matrix, indices):
-    """Compute the reduced density matrix by tracing out the provided indices.
+def partial_trace(tensor, indices, axes=None):
+    """Partially trace over specified axes of a tensor.
 
     Args:
-        density_matrix (tensor_like): 3D density matrix tensor. This tensor should be of size
-            ``(batch_dim, 2**N, 2**N)``, for some integer number of wires``N``.
-        indices (list(int)): List of indices to be traced.
+        tensor (tensor_like): Input tensor
+        indices (list[int]): Axes to trace out
+        axes (None or list[int]): Axes of tensor that correspond to subsystems.
+            If None, last two axes are assumed to correspond to subsystems.
 
     Returns:
-        tensor_like: (reduced) Density matrix of size ``(batch_dim, 2**len(wires), 2**len(wires))``
+        tensor_like: Traced tensor
 
-    **Example**
-
-    >>> x = np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-    ...               [[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]])
-    >>> _batched_partial_trace(x, indices=[0])
-    array([[[1, 0],
-            [0, 0]],
-
-           [[0, 0],
-            [0, 1]]])
-
-    >>> x = tf.Variable([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-    ...                  [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 0]]], dtype=tf.complex128)
-    >>> _batched_partial_trace(x, indices=[1])
-    <tf.Tensor: shape=(2, 2, 2), dtype=complex128, numpy=
-    array([[[1.+0.j, 0.+0.j],
-            [0.+0.j, 0.+0.j]],
-
-           [[1.+0.j, 0.+0.j],
-            [0.+0.j, 0.+0.j]]])>
     """
-    # Autograd does not support same indices sum in backprop, and tensorflow
-    # has a limit of 8 dimensions if same indices are used
-    if get_interface(density_matrix) in ["autograd", "tensorflow"]:
-        return _batched_partial_trace_nonrep_indices(density_matrix, indices)
+    tensor = cast(tensor, dtype="complex128")
 
-    # Dimension and reshape
-    batch_dim, dim = density_matrix.shape[:2]
-    num_indices = int(np.log2(dim))
-    rho_dim = 2 * num_indices
+    if axes is None:
+        axes = [-2, -1]
 
-    density_matrix = np.reshape(density_matrix, [batch_dim] + [2] * 2 * num_indices)
-    indices = np.sort(indices)
+    if len(axes) != 2:
+        raise ValueError("Partial trace expects tensor to represent bipartite system.")
 
-    # For loop over wires
-    for i, target_index in enumerate(indices):
-        target_index = target_index - i
-        state_indices = ABC[1 : rho_dim - 2 * i + 1]
+    tensor = qml.math.convert_like(tensor, tensor)
+
+    if qml.math.get_interface(tensor) in ["autograd", "tensorflow"]:
+        return _batched_partial_trace_nonrep_indices(tensor, indices, axes)
+
+    return _batched_partial_trace(tensor, indices, axes)
+
+
+def _batched_partial_trace_nonrep_indices(tensor, indices, axes):
+    rho_dim = tensor.shape[axes[0]]
+    batch_axes = [i for i in range(len(tensor.shape)) if i not in axes]
+
+    tensor = qml.math.reshape(tensor, [tensor.shape[i] for i in batch_axes] + [2] * rho_dim)
+
+    for i, idx in enumerate(indices):
+        idx -= i  # account for shrinking dimensions
+
+        # Trace out index idx
+        state_indices = qml.math.ABC[1:rho_dim - 2 * i + 1]
         state_indices = list(state_indices)
 
-        target_letter = state_indices[target_index]
-        state_indices[target_index + num_indices - i] = target_letter
+        target_letter = state_indices[idx]
+        state_indices[idx + rho_dim // 2 - i] = target_letter
         state_indices = "".join(state_indices)
 
-        einsum_indices = f"a{state_indices}"
-        density_matrix = einsum(einsum_indices, density_matrix)
+        einsum_str = "...{}->...".format(state_indices)
+        tensor = qml.math.einsum(einsum_str, tensor)
 
-    number_wires_sub = num_indices - len(indices)
-    reduced_density_matrix = np.reshape(
-        density_matrix, (batch_dim, 2**number_wires_sub, 2**number_wires_sub)
-    )
-    return reduced_density_matrix
+    tensor = qml.math.reshape(tensor, [tensor.shape[i] for i in batch_axes] + [tensor.shape[axes[0]] // 2] * 2)
+    return tensor
 
 
-def _batched_partial_trace_nonrep_indices(density_matrix, indices):
-    """Compute the reduced density matrix for autograd interface by tracing out the provided indices with the use
-    of projectors as same subscripts indices are not supported in autograd backprop.
-    """
-    # Dimension and reshape
-    batch_dim, dim = density_matrix.shape[:2]
-    num_indices = int(np.log2(dim))
-    rho_dim = 2 * num_indices
-    density_matrix = np.reshape(density_matrix, [batch_dim] + [2] * 2 * num_indices)
+def _batched_partial_trace(tensor, indices, axes):
+    rho_dim = tensor.shape[axes[0]]
+    # wkt axes [-2,1] => axes[0] = -2, axes[1] = 1
+    # tensor = [[], [], [], []] => tensor.shape[-2] = 2 = rho_dim
 
-    kraus = cast(np.eye(2), density_matrix.dtype)
 
-    kraus = np.reshape(kraus, (2, 1, 2))
-    kraus_dagger = np.asarray([np.conj(np.transpose(k)) for k in kraus])
+    batch_axes = [i for i in range(len(tensor.shape)) if i not in axes]
+    print("batch_axes", batch_axes)
+    print("tensor list", [tensor.shape[i] for i in batch_axes])
+    # TODO: figure out how to reshaping works?
+    tensor = qml.math.reshape(tensor, [tensor.shape[i] for i in batch_axes] + [2] * rho_dim)
+    indices = np.sort(indices)
 
-    kraus = convert_like(kraus, density_matrix)
-    kraus_dagger = convert_like(kraus_dagger, density_matrix)
-    # For loop over wires
-    for target_wire in indices:
-        # Tensor indices of density matrix
-        state_indices = ABC[1 : rho_dim + 1]
-        # row indices of the quantum state affected by this operation
-        row_wires_list = [target_wire + 1]
-        row_indices = "".join(ABC_ARRAY[row_wires_list].tolist())
-        # column indices are shifted by the number of wires
-        col_wires_list = [w + num_indices for w in row_wires_list]
-        col_indices = "".join(ABC_ARRAY[col_wires_list].tolist())
-        # indices in einsum must be replaced with new ones
-        num_partial_trace_wires = 1
-        new_row_indices = ABC[rho_dim + 1 : rho_dim + num_partial_trace_wires + 1]
-        new_col_indices = ABC[
-            rho_dim + num_partial_trace_wires + 1 : rho_dim + 2 * num_partial_trace_wires + 1
-        ]
-        # index for summation over Kraus operators
-        kraus_index = ABC[
-            rho_dim + 2 * num_partial_trace_wires + 1 : rho_dim + 2 * num_partial_trace_wires + 2
-        ]
-        # new state indices replace row and column indices with new ones
-        new_state_indices = functools.reduce(
-            lambda old_string, idx_pair: old_string.replace(idx_pair[0], idx_pair[1]),
-            zip(col_indices + row_indices, new_col_indices + new_row_indices),
-            state_indices,
-        )
-        # index mapping for einsum, e.g., 'iga,abcdef,idh->gbchef'
-        einsum_indices = (
-            f"{kraus_index}{new_row_indices}{row_indices}, a{state_indices},"
-            f"{kraus_index}{col_indices}{new_col_indices}->a{new_state_indices}"
-        )
-        density_matrix = einsum(einsum_indices, kraus, density_matrix, kraus_dagger)
+    for i, idx in enumerate(indices):
+        idx = idx - i  # account for shrinking dimensions
 
-    number_wires_sub = num_indices - len(indices)
-    reduced_density_matrix = np.reshape(
-        density_matrix, (batch_dim, 2**number_wires_sub, 2**number_wires_sub)
-    )
-    return reduced_density_matrix
+        state_indices = qml.math.ABC[1:rho_dim - 2 * i + 1]
+
+        target_letter = state_indices[idx]
+        state_indices[idx + rho_dim // 2 - i] = target_letter
+        state_indices = "".join(state_indices)
+
+        einsum_str = "...{}->...".format(state_indices)
+        tensor = qml.math.einsum(einsum_str, tensor)
+
+    tensor = qml.math.reshape(tensor, [tensor.shape[i] for i in batch_axes] + [tensor.shape[axes[0]] // 2] * 2)
+
+    return tensor
+
+
+# def _batched_partial_trace(density_matrix, indices):
+#     """Compute the reduced density matrix by tracing out the provided indices.
+#
+#     Args:
+#         density_matrix (tensor_like): 3D density matrix tensor. This tensor should be of size
+#             ``(batch_dim, 2**N, 2**N)``, for some integer number of wires``N``.
+#         indices (list(int)): List of indices to be traced.
+#
+#     Returns:
+#         tensor_like: (reduced) Density matrix of size ``(batch_dim, 2**len(wires), 2**len(wires))``
+#
+#     **Example**
+#
+#     >>> x = np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+#     ...               [[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]])
+#     >>> _batched_partial_trace(x, indices=[0])
+#     array([[[1, 0],
+#             [0, 0]],
+#
+#            [[0, 0],
+#             [0, 1]]])
+#
+#     >>> x = tf.Variable([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+#     ...                  [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 0]]], dtype=tf.complex128)
+#     >>> _batched_partial_trace(x, indices=[1])
+#     <tf.Tensor: shape=(2, 2, 2), dtype=complex128, numpy=
+#     array([[[1.+0.j, 0.+0.j],
+#             [0.+0.j, 0.+0.j]],
+#
+#            [[1.+0.j, 0.+0.j],
+#             [0.+0.j, 0.+0.j]]])>
+#     """
+#     # Autograd does not support same indices sum in backprop, and tensorflow
+#     # has a limit of 8 dimensions if same indices are used
+#     if get_interface(density_matrix) in ["autograd", "tensorflow"]:
+#         return _batched_partial_trace_nonrep_indices(density_matrix, indices)
+#
+#     # Dimension and reshape
+#     batch_dim, dim = density_matrix.shape[:2]
+#     num_indices = int(np.log2(dim))
+#     rho_dim = 2 * num_indices
+#
+#     density_matrix = np.reshape(density_matrix, [batch_dim] + [2] * 2 * num_indices)
+#     indices = np.sort(indices)
+#
+#     # For loop over wires
+#     for i, target_index in enumerate(indices):
+#         target_index = target_index - i
+#         state_indices = ABC[1: rho_dim - 2 * i + 1]
+#         state_indices = list(state_indices)
+#
+#         target_letter = state_indices[target_index]
+#         state_indices[target_index + num_indices - i] = target_letter
+#         state_indices = "".join(state_indices)
+#
+#         einsum_indices = f"a{state_indices}"
+#         density_matrix = einsum(einsum_indices, density_matrix)
+#
+#     number_wires_sub = num_indices - len(indices)
+#     reduced_density_matrix = np.reshape(
+#         density_matrix, (batch_dim, 2 ** number_wires_sub, 2 ** number_wires_sub)
+#     )
+#     return reduced_density_matrix
+
+
+# def _batched_partial_trace_nonrep_indices(density_matrix, indices):
+#     """Compute the reduced density matrix for autograd interface by tracing out the provided indices with the use
+#     of projectors as same subscripts indices are not supported in autograd backprop.
+#     """
+#     # Dimension and reshape
+#     batch_dim, dim = density_matrix.shape[:2]
+#     num_indices = int(np.log2(dim))
+#     rho_dim = 2 * num_indices
+#     density_matrix = np.reshape(density_matrix, [batch_dim] + [2] * 2 * num_indices)
+#
+#     kraus = cast(np.eye(2), density_matrix.dtype)
+#
+#     kraus = np.reshape(kraus, (2, 1, 2))
+#     kraus_dagger = np.asarray([np.conj(np.transpose(k)) for k in kraus])
+#
+#     kraus = convert_like(kraus, density_matrix)
+#     kraus_dagger = convert_like(kraus_dagger, density_matrix)
+#     # For loop over wires
+#     for target_wire in indices:
+#         # Tensor indices of density matrix
+#         state_indices = ABC[1: rho_dim + 1]
+#         # row indices of the quantum state affected by this operation
+#         row_wires_list = [target_wire + 1]
+#         row_indices = "".join(ABC_ARRAY[row_wires_list].tolist())
+#         # column indices are shifted by the number of wires
+#         col_wires_list = [w + num_indices for w in row_wires_list]
+#         col_indices = "".join(ABC_ARRAY[col_wires_list].tolist())
+#         # indices in einsum must be replaced with new ones
+#         num_partial_trace_wires = 1
+#         new_row_indices = ABC[rho_dim + 1: rho_dim + num_partial_trace_wires + 1]
+#         new_col_indices = ABC[
+#                           rho_dim + num_partial_trace_wires + 1: rho_dim + 2 * num_partial_trace_wires + 1
+#                           ]
+#         # index for summation over Kraus operators
+#         kraus_index = ABC[
+#                       rho_dim + 2 * num_partial_trace_wires + 1: rho_dim + 2 * num_partial_trace_wires + 2
+#                       ]
+#         # new state indices replace row and column indices with new ones
+#         new_state_indices = functools.reduce(
+#             lambda old_string, idx_pair: old_string.replace(idx_pair[0], idx_pair[1]),
+#             zip(col_indices + row_indices, new_col_indices + new_row_indices),
+#             state_indices,
+#         )
+#         # index mapping for einsum, e.g., 'iga,abcdef,idh->gbchef'
+#         einsum_indices = (
+#             f"{kraus_index}{new_row_indices}{row_indices}, a{state_indices},"
+#             f"{kraus_index}{col_indices}{new_col_indices}->a{new_state_indices}"
+#         )
+#         density_matrix = einsum(einsum_indices, kraus, density_matrix, kraus_dagger)
+#
+#     number_wires_sub = num_indices - len(indices)
+#     reduced_density_matrix = np.reshape(
+#         density_matrix, (batch_dim, 2 ** number_wires_sub, 2 ** number_wires_sub)
+#     )
+#     return reduced_density_matrix
 
 
 def reduce_statevector(state, indices, check_state=False, c_dtype="complex128"):
@@ -441,7 +524,7 @@ def reduce_statevector(state, indices, check_state=False, c_dtype="complex128"):
     # traced_system = [x + 1 for x in consecutive_wires if x not in indices]
 
     # trace out the subsystem
-    indices1 = ABC[1 : num_wires + 1]
+    indices1 = ABC[1: num_wires + 1]
     indices2 = "".join(
         [ABC[num_wires + i + 1] if i in indices else ABC[i + 1] for i in consecutive_wires]
     )
@@ -702,7 +785,7 @@ def mutual_info(state, indices0, indices1, base=None, check_state=False, c_dtype
 
 # pylint: disable=too-many-arguments
 def _compute_mutual_info(
-    state, indices0, indices1, base=None, check_state=False, c_dtype="complex128"
+        state, indices0, indices1, base=None, check_state=False, c_dtype="complex128"
 ):
     """Compute the mutual information between the subsystems."""
     all_indices = sorted([*indices0, *indices1])
@@ -874,9 +957,9 @@ def _check_density_matrix(density_matrix):
     """Check the shape, the trace and the positive semi-definitiveness of a matrix."""
     dim = density_matrix.shape[-1]
     if (
-        len(density_matrix.shape) not in (2, 3)
-        or density_matrix.shape[-2] != dim
-        or not np.log2(dim).is_integer()
+            len(density_matrix.shape) not in (2, 3)
+            or density_matrix.shape[-2] != dim
+            or not np.log2(dim).is_integer()
     ):
         raise ValueError("Density matrix must be of shape (2**N, 2**N) or (batch_dim, 2**N, 2**N).")
 

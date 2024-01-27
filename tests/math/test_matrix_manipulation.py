@@ -22,6 +22,7 @@ from scipy.sparse import csr_matrix
 
 import pennylane as qml
 from pennylane import numpy as pnp
+from pennylane.math import reduce_dm
 
 Toffoli_broadcasted = np.tensordot([0.1, -4.2j], Toffoli, axes=0)
 CNOT_broadcasted = np.tensordot([1.4], CNOT, axes=0)
@@ -803,7 +804,7 @@ class TestReduceMatrices:
 
         assert final_wires == expected_wires
         assert qml.math.allclose(reduced_mat, expected_matrix)
-        assert reduced_mat.shape == (2**5, 2**5)
+        assert reduced_mat.shape == (2 ** 5, 2 ** 5)
 
     def test_prod_matrices(self):
         """Test the reduce_matrices function with the dot method."""
@@ -817,4 +818,22 @@ class TestReduceMatrices:
 
         assert final_wires == expected_wires
         assert qml.math.allclose(reduced_mat, expected_matrix)
-        assert reduced_mat.shape == (2**5, 2**5)
+        assert reduced_mat.shape == (2 ** 5, 2 ** 5)
+
+
+class TestDecomposition:
+
+    def test_reduce_dm(self):
+        """Test that the reduced density matrix function produces
+        the correct output for partial tracing"""
+        rho = np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 1]])
+        expected = np.array([[1, 0], [0, 1]]).astype(complex)
+
+        # Tests using modified functions
+        rho = np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 1]])
+        res = qml.math.quantum.partial_trace(rho, [0], axes=[-2, -1])
+        assert np.all(res == expected)
+
+        rho = np.array([[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+        res = qml.math.quantum.partial_trace(rho, [1], axes=[-2, -1])
+        assert np.all(res == expected)
