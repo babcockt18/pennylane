@@ -21,6 +21,8 @@ from autoray import numpy as np
 from numpy import float64
 
 import pennylane as qml
+from torch import Tensor
+import tensorflow as tf
 
 from . import single_dispatch  # pylint:disable=unused-import
 from .multi_dispatch import diag, dot, scatter_element_add, einsum, get_interface
@@ -101,7 +103,7 @@ def cov_matrix(prob, obs, wires=None, diag_approx=False):
         w = o.wires.labels if wires is None else wires.indices(o.wires)
         p = marginal_prob(prob, w)
 
-        res = dot(eigvals**2, p) - (dot(eigvals, p)) ** 2
+        res = dot(eigvals ** 2, p) - (dot(eigvals, p)) ** 2
         variances.append(res)
 
     cov = diag(variances)
@@ -169,6 +171,49 @@ def marginal_prob(prob, axis):
     prob = np.reshape(prob, [2] * num_wires)
     prob = np.sum(prob, axis=inactive_wires)
     return np.flatten(prob)
+
+
+def partial_trace(tensor, axes):
+    if qml.math.get_interface(tensor) == "jax":
+
+        import jax
+        import jax.numpy as jnp
+
+        tensor_shape = jnp.shape(tensor)
+
+        if len(axes) > len(tensor_shape):
+            raise ValueError("More axes specified than tensor has dimensions")
+
+        keep_dims = [i for i in range(len(tensor_shape)) if i not in axes]
+
+        # Trace out specified axes
+        tensor = jax.lax.trace(tensor, axis1=axes[0], axis2=axes[-1])
+
+        # Reshape tensor
+        new_shape = [d for i, d in enumerate(tensor_shape) if i in keep_dims]
+        return jnp.reshape(tensor, new_shape)
+
+    elif qml.math.get_interface(tensor) == "tensorflow":
+
+        tensor_shape = qml.math.shape(tensor)
+
+        if len(axes) > len(tensor_shape):
+            raise ValueError("More axes specified than tensor has dimensions")
+
+        # Trace out specified axes
+
+        keep_axes = [i for i in range(len(tensor_shape)) if i not in axes]
+
+        tensor = qml.math.tf.trace(tensor, axis1=axes[0], axis2=axes[-1])
+
+        # Reshape tensor
+
+        new_shape = [d for i, d in enumerate(tensor_shape) if i in keep_axes]
+
+        return qml.math.reshape(tensor, new_shape)
+
+    else:
+        raise ValueError(f"Unsupported interface {qml.math.get_interface(tensor)}")
 
 
 def reduce_dm(density_matrix, indices, check_state=False, c_dtype="complex128"):
@@ -295,7 +340,7 @@ def _batched_partial_trace(density_matrix, indices):
     # For loop over wires
     for i, target_index in enumerate(indices):
         target_index = target_index - i
-        state_indices = ABC[1 : rho_dim - 2 * i + 1]
+        state_indices = ABC[1: rho_dim - 2 * i + 1]
         state_indices = list(state_indices)
 
         target_letter = state_indices[target_index]
@@ -307,7 +352,7 @@ def _batched_partial_trace(density_matrix, indices):
 
     number_wires_sub = num_indices - len(indices)
     reduced_density_matrix = np.reshape(
-        density_matrix, (batch_dim, 2**number_wires_sub, 2**number_wires_sub)
+        density_matrix, (batch_dim, 2 ** number_wires_sub, 2 ** number_wires_sub)
     )
     return reduced_density_matrix
 
@@ -332,7 +377,7 @@ def _batched_partial_trace_nonrep_indices(density_matrix, indices):
     # For loop over wires
     for target_wire in indices:
         # Tensor indices of density matrix
-        state_indices = ABC[1 : rho_dim + 1]
+        state_indices = ABC[1: rho_dim + 1]
         # row indices of the quantum state affected by this operation
         row_wires_list = [target_wire + 1]
         row_indices = "".join(ABC_ARRAY[row_wires_list].tolist())
@@ -341,14 +386,14 @@ def _batched_partial_trace_nonrep_indices(density_matrix, indices):
         col_indices = "".join(ABC_ARRAY[col_wires_list].tolist())
         # indices in einsum must be replaced with new ones
         num_partial_trace_wires = 1
-        new_row_indices = ABC[rho_dim + 1 : rho_dim + num_partial_trace_wires + 1]
+        new_row_indices = ABC[rho_dim + 1: rho_dim + num_partial_trace_wires + 1]
         new_col_indices = ABC[
-            rho_dim + num_partial_trace_wires + 1 : rho_dim + 2 * num_partial_trace_wires + 1
-        ]
+                          rho_dim + num_partial_trace_wires + 1: rho_dim + 2 * num_partial_trace_wires + 1
+                          ]
         # index for summation over Kraus operators
         kraus_index = ABC[
-            rho_dim + 2 * num_partial_trace_wires + 1 : rho_dim + 2 * num_partial_trace_wires + 2
-        ]
+                      rho_dim + 2 * num_partial_trace_wires + 1: rho_dim + 2 * num_partial_trace_wires + 2
+                      ]
         # new state indices replace row and column indices with new ones
         new_state_indices = functools.reduce(
             lambda old_string, idx_pair: old_string.replace(idx_pair[0], idx_pair[1]),
@@ -364,7 +409,7 @@ def _batched_partial_trace_nonrep_indices(density_matrix, indices):
 
     number_wires_sub = num_indices - len(indices)
     reduced_density_matrix = np.reshape(
-        density_matrix, (batch_dim, 2**number_wires_sub, 2**number_wires_sub)
+        density_matrix, (batch_dim, 2 ** number_wires_sub, 2 ** number_wires_sub)
     )
     return reduced_density_matrix
 
@@ -441,7 +486,7 @@ def reduce_statevector(state, indices, check_state=False, c_dtype="complex128"):
     # traced_system = [x + 1 for x in consecutive_wires if x not in indices]
 
     # trace out the subsystem
-    indices1 = ABC[1 : num_wires + 1]
+    indices1 = ABC[1: num_wires + 1]
     indices2 = "".join(
         [ABC[num_wires + i + 1] if i in indices else ABC[i + 1] for i in consecutive_wires]
     )
@@ -702,7 +747,7 @@ def mutual_info(state, indices0, indices1, base=None, check_state=False, c_dtype
 
 # pylint: disable=too-many-arguments
 def _compute_mutual_info(
-    state, indices0, indices1, base=None, check_state=False, c_dtype="complex128"
+        state, indices0, indices1, base=None, check_state=False, c_dtype="complex128"
 ):
     """Compute the mutual information between the subsystems."""
     all_indices = sorted([*indices0, *indices1])
@@ -874,9 +919,9 @@ def _check_density_matrix(density_matrix):
     """Check the shape, the trace and the positive semi-definitiveness of a matrix."""
     dim = density_matrix.shape[-1]
     if (
-        len(density_matrix.shape) not in (2, 3)
-        or density_matrix.shape[-2] != dim
-        or not np.log2(dim).is_integer()
+            len(density_matrix.shape) not in (2, 3)
+            or density_matrix.shape[-2] != dim
+            or not np.log2(dim).is_integer()
     ):
         raise ValueError("Density matrix must be of shape (2**N, 2**N) or (batch_dim, 2**N, 2**N).")
 

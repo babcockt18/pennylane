@@ -14,14 +14,14 @@
 """Unit tests for matrix expand functions."""
 # pylint: disable=too-few-public-methods,too-many-public-methods
 from functools import reduce
-
 import numpy as np
 import pytest
-from gate_data import CNOT, II, SWAP, I, Toffoli
-from scipy.sparse import csr_matrix
-
 import pennylane as qml
+from tests.gate_data import CNOT, II, SWAP, I, Toffoli
+from scipy.sparse import csr_matrix
 from pennylane import numpy as pnp
+from pennylane.math.quantum import partial_trace
+
 
 Toffoli_broadcasted = np.tensordot([0.1, -4.2j], Toffoli, axes=0)
 CNOT_broadcasted = np.tensordot([1.4], CNOT, axes=0)
@@ -803,7 +803,7 @@ class TestReduceMatrices:
 
         assert final_wires == expected_wires
         assert qml.math.allclose(reduced_mat, expected_matrix)
-        assert reduced_mat.shape == (2**5, 2**5)
+        assert reduced_mat.shape == (2 ** 5, 2 ** 5)
 
     def test_prod_matrices(self):
         """Test the reduce_matrices function with the dot method."""
@@ -817,4 +817,54 @@ class TestReduceMatrices:
 
         assert final_wires == expected_wires
         assert qml.math.allclose(reduced_mat, expected_matrix)
-        assert reduced_mat.shape == (2**5, 2**5)
+        assert reduced_mat.shape == (2 ** 5, 2 ** 5)
+
+
+class TestPartialTrace:
+    def test_partial_trace_numpy_interface(self):
+        tensor = np.ones((2, 3, 4))
+        axes = [1]
+
+        traced = partial_trace(tensor, axes)
+
+        assert traced.shape == (2, 4)
+
+    def test_partial_trace_jax_interface(self):
+        if not qml.math.SUPPORTS_JAX:
+            pytest.skip("JAX not supported")
+
+        import jax
+        import jax.numpy as jnp
+
+        tensor = jnp.ones((2, 3, 4))
+        axes = [1]
+
+        traced = partial_trace(tensor, axes)
+
+        assert traced.shape == (2, 4)
+
+    def test_partial_trace_tensorflow_interface(self):
+        if not qml.math.SUPPORTS_TF:
+            pytest.skip("TensorFlow not supported")
+
+        import tensorflow as tf
+
+        tensor = tf.ones((2, 3, 4))
+        axes = [1]
+
+        traced = partial_trace(tensor, axes)
+
+        assert traced.shape == (2, 4)
+
+    def test_partial_trace_invalid_axes(self):
+        tensor = np.ones((2, 3, 4))
+        axes = [0, 1, 2, 3]
+
+        with pytest.raises(ValueError, match="More axes specified than tensor has dimensions"):
+            partial_trace(tensor, axes)
+
+    def test_partial_trace_unsupported_interface(self):
+        tensor = "string"  # unsupported interface
+
+        with pytest.raises(ValueError, match="Unsupported interface"):
+            partial_trace(tensor, [0])
