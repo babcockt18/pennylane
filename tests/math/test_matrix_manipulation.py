@@ -22,6 +22,14 @@ from scipy.sparse import csr_matrix
 
 import pennylane as qml
 from pennylane import numpy as pnp
+from pennylane.math.quantum import partial_trace
+
+# Import interfaces
+import jax.numpy as jnp
+import torch
+import tensorflow as tf
+
+
 
 Toffoli_broadcasted = np.tensordot([0.1, -4.2j], Toffoli, axes=0)
 CNOT_broadcasted = np.tensordot([1.4], CNOT, axes=0)
@@ -818,3 +826,50 @@ class TestReduceMatrices:
         assert final_wires == expected_wires
         assert qml.math.allclose(reduced_mat, expected_matrix)
         assert reduced_mat.shape == (2**5, 2**5)
+
+
+
+class TestPartialTrace:
+    @pytest.mark.parametrize("interface", [np, jnp, torch, tf])
+    def test_partial_trace_square_matrix(self, interface):
+        """Test that the partial trace works for square matrices with different interfaces."""
+        matrix = interface.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 1]])
+        expected_result = interface.array([[1, 0], [0, 1]])
+        result = partial_trace(matrix, indices=[1])
+        assert np.allclose(result, expected_result)
+
+    def test_partial_trace_non_power_of_two(self):
+        """Test that the partial trace works for square matrices with dimensions that are not a power of two."""
+        matrix = np.array([[1, 0, 0], [0, 0, 0], [0, 0, 1]])
+        expected_result = np.array([[1, 0], [0, 1]])
+        result = partial_trace(matrix, indices=[1])
+        assert np.allclose(result, expected_result)
+
+    def test_partial_trace_batch_dimensions(self):
+        """Test that the partial trace works with batch dimensions."""
+        matrix = np.array([[[1, 0], [0, 0]], [[0, 0], [0, 1]]])
+        expected_result = np.array([1, 1])
+        result = partial_trace(matrix, indices=[0], batch_dims=(1,))
+        assert np.allclose(result, expected_result)
+
+    def test_partial_trace_invalid_input(self):
+        """Test that the partial trace raises an error for invalid input."""
+        with pytest.raises(ValueError):
+            matrix = np.array([1, 2, 3])  # Not a square matrix
+            partial_trace(matrix, indices=[0])
+
+    def test_partial_trace_invalid_indices(self):
+        """Test that the partial trace raises an error for invalid indices."""
+        with pytest.raises(ValueError):
+            matrix = np.array([[1, 0], [0, 1]])
+            partial_trace(matrix, indices=[2])  # Index out of range
+
+    @pytest.mark.parametrize("dtype", [np.float32, np.float64, np.complex64, np.complex128])
+    def test_partial_trace_dtype(self, dtype):
+        """Test that the partial trace works with different data types."""
+        matrix = np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 1]], dtype=dtype)
+        expected_result = np.array([[1, 0], [0, 1]], dtype=dtype)
+        result = partial_trace(matrix, indices=[1])
+        assert np.allclose(result, expected_result)
+
+# Note: The `partial_trace` function should be defined as shown in the previous messages.

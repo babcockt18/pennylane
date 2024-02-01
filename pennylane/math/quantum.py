@@ -247,69 +247,85 @@ def reduce_dm(density_matrix, indices, check_state=False, c_dtype="complex128"):
     return _permute_dense_matrix(density_matrix, sorted(indices), indices, batch_dim)
 
 
-def _batched_partial_trace(density_matrix, indices):
-    """Compute the reduced density matrix by tracing out the provided indices.
+def _batched_partial_trace(matrix, indices):
+    """
+    Compute the reduced matrix by tracing out the provided indices.
+
+    This function now supports general matrices in addition to density matrices.
 
     Args:
-        density_matrix (tensor_like): 3D density matrix tensor. This tensor should be of size
+        matrix (tensor_like): 3D matrix tensor. This tensor should be of size
             ``(batch_dim, 2**N, 2**N)``, for some integer number of wires``N``.
         indices (list(int)): List of indices to be traced.
 
     Returns:
-        tensor_like: (reduced) Density matrix of size ``(batch_dim, 2**len(wires), 2**len(wires))``
-
-    **Example**
-
-    >>> x = np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-    ...               [[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]])
-    >>> _batched_partial_trace(x, indices=[0])
-    array([[[1, 0],
-            [0, 0]],
-
-           [[0, 0],
-            [0, 1]]])
-
-    >>> x = tf.Variable([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-    ...                  [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 0]]], dtype=tf.complex128)
-    >>> _batched_partial_trace(x, indices=[1])
-    <tf.Tensor: shape=(2, 2, 2), dtype=complex128, numpy=
-    array([[[1.+0.j, 0.+0.j],
-            [0.+0.j, 0.+0.j]],
-
-           [[1.+0.j, 0.+0.j],
-            [0.+0.j, 0.+0.j]]])>
+        tensor_like: Reduced matrix of size ``(batch_dim, 2**len(wires), 2**len(wires))``
     """
-    # Autograd does not support same indices sum in backprop, and tensorflow
-    # has a limit of 8 dimensions if same indices are used
-    if get_interface(density_matrix) in ["autograd", "tensorflow"]:
-        return _batched_partial_trace_nonrep_indices(density_matrix, indices)
+    if get_interface(matrix) in ["autograd", "tensorflow"]:
+        return _batched_partial_trace_nonrep_indices(matrix, indices)
 
     # Dimension and reshape
-    batch_dim, dim = density_matrix.shape[:2]
+    batch_dim, dim = matrix.shape[:2]
     num_indices = int(np.log2(dim))
-    rho_dim = 2 * num_indices
+    matrix_dim = 2 * num_indices
 
-    density_matrix = np.reshape(density_matrix, [batch_dim] + [2] * 2 * num_indices)
+    matrix = np.reshape(matrix, [batch_dim] + [2] * 2 * num_indices)
     indices = np.sort(indices)
 
     # For loop over wires
     for i, target_index in enumerate(indices):
-        target_index = target_index - i
-        state_indices = ABC[1 : rho_dim - 2 * i + 1]
-        state_indices = list(state_indices)
-
+        target_index -= i
+        state_indices = ABC[1 : matrix_dim - 2 * i + 1]
         target_letter = state_indices[target_index]
         state_indices[target_index + num_indices - i] = target_letter
-        state_indices = "".join(state_indices)
-
         einsum_indices = f"a{state_indices}"
-        density_matrix = einsum(einsum_indices, density_matrix)
+        matrix = einsum(einsum_indices, matrix)
 
     number_wires_sub = num_indices - len(indices)
-    reduced_density_matrix = np.reshape(
-        density_matrix, (batch_dim, 2**number_wires_sub, 2**number_wires_sub)
+    reduced_matrix = np.reshape(
+        matrix, (batch_dim, 2**number_wires_sub, 2**number_wires_sub)
     )
-    return reduced_density_matrix
+    return reduced_matrix
+
+
+def partial_trace(matrix, indices, *, batch_dims=None):
+    """
+    Compute the partial trace of a matrix over the given indices.
+
+    Args:
+        matrix (array): The matrix (or batch of matrices) to partially trace.
+        indices (list[int]): The indices of the wires to trace out.
+        batch_dims (tuple[int], optional): The dimensions of the batch. If None, it is assumed that there is no batching.
+
+    Returns:
+        array: The resulting matrix after performing the partial trace.
+    """
+    # Ensure that the matrix is square
+    if matrix.shape[-1] != matrix.shape[-2]:
+        raise ValueError("Input matrix must be square.")
+
+    # Calculate the dimensions of the subsystems to keep and trace out
+    num_wires = int(qml.math.log2(matrix.shape[-1]))
+    keep = [i for i in range(num_wires) if i not in indices]
+
+    # Reshape the input matrix to separate the subsystems
+    new_shape = [-1] * (len(batch_dims) if batch_dims else 0) + [2] * (2 * num_wires)
+    reshaped_matrix = qml.math.reshape(matrix, new_shape)
+
+    # Permute the axes to group the subsystems to keep and trace out
+    perm = list(range(len(batch_dims) if batch_dims else 0)) + [a + b for a in keep for b in (0, num_wires)] + [a + b for a in indices for b in (0, num_wires)]
+    permuted_matrix = qml.math.transpose(reshaped_matrix, perm)
+
+    # Reshape to perform the trace
+    final_shape = [-1] * (len(batch_dims) if batch_dims else 0) + [2 ** len(keep)] * 2 + [2 ** len(indices)] * 2
+    reshaped_matrix = qml.math.reshape(permuted_matrix, final_shape)
+
+    # Perform the trace over the subsystems to trace out
+    traced_matrix = qml.math.trace(reshaped_matrix, axis1=-2, axis2=-1)
+
+    # Reshape the result to remove the traced out dimensions
+    result_shape = matrix.shape[:-2] + (2 ** len(keep),) * 2
+    return qml.math.reshape(traced_matrix, result_shape)
 
 
 def _batched_partial_trace_nonrep_indices(density_matrix, indices):
