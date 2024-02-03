@@ -814,7 +814,7 @@ class TestReduceMatrices:
 
         assert final_wires == expected_wires
         assert qml.math.allclose(reduced_mat, expected_matrix)
-        assert reduced_mat.shape == (2 ** 5, 2 ** 5)
+        assert reduced_mat.shape == (2**5, 2**5)
 
     def test_prod_matrices(self):
         """Test the reduce_matrices function with the dot method."""
@@ -828,7 +828,7 @@ class TestReduceMatrices:
 
         assert final_wires == expected_wires
         assert qml.math.allclose(reduced_mat, expected_matrix)
-        assert reduced_mat.shape == (2 ** 5, 2 ** 5)
+        assert reduced_mat.shape == (2**5, 2**5)
 
 
 class TestBatchedPartialTrace:
@@ -851,8 +851,14 @@ class TestBatchedPartialTrace:
     def test_batched_density_matrices(self, array_func):
         """Test partial trace on a batch of density matrices."""
         # Define a batch of 2-qubit density matrices
-        rho = array_func(np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-                                   [[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]))
+        rho = array_func(
+            np.array(
+                [
+                    [[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+                    [[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+                ]
+            )
+        )
 
         # rho = array_funcs(rho)
         # Expected result after tracing out the first qubit for each matrix
@@ -893,4 +899,8 @@ class TestBatchedPartialTrace:
         # Attempt to trace over an invalid wire
         with pytest.raises(Exception) as e:
             qml.math.quantum.batched_partial_trace(rho, [2])
-            assert e.type in (ValueError, IndexError, tf.python.framework.errors_impl.InvalidArgumentError)
+            assert e.type in (
+                ValueError,
+                IndexError,
+                tf.python.framework.errors_impl.InvalidArgumentError,
+            )
