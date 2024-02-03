@@ -14,7 +14,6 @@
 """Unit tests for matrix expand functions."""
 # pylint: disable=too-few-public-methods,too-many-public-methods
 from functools import reduce
-from typing import Literal
 
 import numpy as np
 import pytest
@@ -31,11 +30,9 @@ torch = pytest.importorskip("torch")
 jax = pytest.importorskip("jax")
 jnp = pytest.importorskip("jax.numpy")
 
-
 # Define a list of dtypes to test
 dtypes = ["complex64", "complex128"]
 array_funcs = [lambda x: x, np.array, pnp.array, jnp.array, torch.tensor, tf.Variable, tf.constant]
-
 
 Toffoli_broadcasted = np.tensordot([0.1, -4.2j], Toffoli, axes=0)
 CNOT_broadcasted = np.tensordot([1.4], CNOT, axes=0)
@@ -832,18 +829,17 @@ class TestReduceMatrices:
         assert final_wires == expected_wires
         assert qml.math.allclose(reduced_mat, expected_matrix)
         assert reduced_mat.shape == (2**5, 2**5)
-    
 
 
 class TestBatchedPartialTrace:
     """Unit tests for the batched_partial_trace function."""
-    
+
     @pytest.mark.parametrize("array_func", array_funcs)
     def test_single_density_matrix(self, array_func):
         """Test partial trace on a single density matrix."""
         # Define a 2-qubit density matrix
         rho = array_func(np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]))
-        
+
         # Expected result after tracing out the second qubit
         expected = array_func(np.array([[[1, 0], [0, 0]]]))
 
@@ -855,9 +851,15 @@ class TestBatchedPartialTrace:
     def test_batched_density_matrices(self, array_func):
         """Test partial trace on a batch of density matrices."""
         # Define a batch of 2-qubit density matrices
-        rho = array_func(np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
-                        [[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]))
-        
+        rho = array_func(
+            np.array(
+                [
+                    [[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+                    [[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+                ]
+            )
+        )
+
         # rho = array_funcs(rho)
         # Expected result after tracing out the first qubit for each matrix
         expected = array_func(np.array([[[1, 0], [0, 0]], [[1, 0], [0, 0]]]))
@@ -897,4 +899,8 @@ class TestBatchedPartialTrace:
         # Attempt to trace over an invalid wire
         with pytest.raises(Exception) as e:
             qml.math.quantum.batched_partial_trace(rho, [2])
-            assert e.type in (ValueError, IndexError, tf.python.framework.errors_impl.InvalidArgumentError)
+            assert e.type in (
+                ValueError,
+                IndexError,
+                tf.python.framework.errors_impl.InvalidArgumentError,
+            )
