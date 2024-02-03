@@ -244,7 +244,6 @@ class TestExpandMatrix:
         """Tests differentiation in TensorFlow by computing the Jacobian of
         the expanded matrix with respect to the canonical matrix."""
 
-
         base_matrix = tf.Variable(base_matrix)
         with tf.GradientTape() as tape:
             res = self.func_for_autodiff(base_matrix)
