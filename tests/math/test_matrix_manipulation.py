@@ -208,7 +208,6 @@ class TestExpandMatrix:
     def test_torch(self, i, base_matrix, tol: float):
         """Tests differentiation in torch by computing the Jacobian of
         the expanded matrix with respect to the canonical matrix."""
-        import torch
 
         base_matrix = torch.tensor(base_matrix, requires_grad=True)
         jac = torch.autograd.functional.jacobian(self.func_for_autodiff, base_matrix)
@@ -226,7 +225,6 @@ class TestExpandMatrix:
     def test_jax(self, i, base_matrix, tol: float):
         """Tests differentiation in jax by computing the Jacobian of
         the expanded matrix with respect to the canonical matrix."""
-        import jax
 
         base_matrix = jax.numpy.array(base_matrix)
         jac_fn = jax.jacobian(self.func_for_autodiff)
@@ -245,7 +243,7 @@ class TestExpandMatrix:
     def test_tf(self, i, base_matrix, tol: float):
         """Tests differentiation in TensorFlow by computing the Jacobian of
         the expanded matrix with respect to the canonical matrix."""
-        import tensorflow as tf
+
 
         base_matrix = tf.Variable(base_matrix)
         with tf.GradientTape() as tape:
