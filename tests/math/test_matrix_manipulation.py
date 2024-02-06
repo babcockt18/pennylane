@@ -828,8 +828,8 @@ class TestReduceMatrices:
         assert reduced_mat.shape == (2**5, 2**5)
 
 
-class TestBatchedPartialTrace:
-    """Unit tests for the batched_partial_trace function."""
+class TestPartialTrace:
+    """Unit tests for the partial_trace function."""
 
     @pytest.mark.parametrize("array_func", array_funcs)
     def test_single_density_matrix(self, array_func):
@@ -841,7 +841,7 @@ class TestBatchedPartialTrace:
         expected = array_func(np.array([[[1, 0], [0, 0]]]))
 
         # Perform the partial trace
-        result = qml.math.quantum.batched_partial_trace(rho, [0])
+        result = qml.math.quantum.partial_trace(rho, [0])
         assert np.allclose(result, expected)
 
     @pytest.mark.parametrize("array_func", array_funcs)
@@ -862,7 +862,7 @@ class TestBatchedPartialTrace:
         expected = array_func(np.array([[[1, 0], [0, 0]], [[1, 0], [0, 0]]]))
 
         # Perform the partial trace
-        result = qml.math.quantum.batched_partial_trace(rho, [1])
+        result = qml.math.quantum.partial_trace(rho, [1])
         assert np.allclose(result, expected)
 
     @pytest.mark.parametrize("array_func", array_funcs)
@@ -872,7 +872,7 @@ class TestBatchedPartialTrace:
         rho = array_func(np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]))
 
         # Perform the partial trace over no wires
-        result = qml.math.quantum.batched_partial_trace(rho, [])
+        result = qml.math.quantum.partial_trace(rho, [])
         assert np.allclose(result, rho)
 
     @pytest.mark.parametrize("array_func", array_funcs)
@@ -884,7 +884,7 @@ class TestBatchedPartialTrace:
         expected = array_func(np.array([1]))
 
         # Perform the partial trace over all wires
-        result = qml.math.quantum.batched_partial_trace(rho, [0, 1])
+        result = qml.math.quantum.partial_trace(rho, [0, 1])
         assert np.allclose(result, expected)
 
     @pytest.mark.parametrize("array_func", array_funcs)
@@ -895,7 +895,7 @@ class TestBatchedPartialTrace:
 
         # Attempt to trace over an invalid wire
         with pytest.raises(Exception) as e:
-            qml.math.quantum.batched_partial_trace(rho, [2])
+            qml.math.quantum.partial_trace(rho, [2])
             assert e.type in (
                 ValueError,
                 IndexError,
