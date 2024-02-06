@@ -237,7 +237,7 @@ def reduce_dm(density_matrix, indices, check_state=False, c_dtype="complex128"):
 
     # Compute the partial trace
     traced_wires = [x for x in consecutive_indices if x not in indices]
-    density_matrix = batched_partial_trace(density_matrix, traced_wires, c_dtype=c_dtype)
+    density_matrix = partial_trace(density_matrix, traced_wires, c_dtype=c_dtype)
 
     if batch_dim is None:
         density_matrix = density_matrix[0]
@@ -246,7 +246,7 @@ def reduce_dm(density_matrix, indices, check_state=False, c_dtype="complex128"):
     return _permute_dense_matrix(density_matrix, sorted(indices), indices, batch_dim)
 
 
-def batched_partial_trace(matrix, indices, c_dtype="complex128"):
+def partial_trace(matrix, indices, c_dtype="complex128"):
     """Compute the reduced density matrix by tracing out the provided indices.
 
     Args:
