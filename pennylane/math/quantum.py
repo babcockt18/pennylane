@@ -258,7 +258,7 @@ def partial_trace(matrix, indices, c_dtype="complex128"):
         tensor_like: (reduced) Density matrix of size ``(batch_dim, 2**len(wires), 2**len(wires))``
 
     **Example**
-    >>> x = np.array([[1, 0, 0, 0], [0, 0, 0, 0]])
+    >>> x = np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
     ...
     >>> partial_trace(x, indices=[0])
     array([[1, 0], [0, 0]])
@@ -327,6 +327,12 @@ def _batched_partial_trace_nonrep_indices(matrix, indices):
     of projectors as same subscripts indices are not supported in autograd backprop.
     """
     # Dimension and reshape
+    # if qml.math.ndim(matrix)==2:
+    #     batch_dim = 1
+    #     dim = len(matrix)
+    # else:
+    #     batch_dim, dim = matrix.shape[:2]
+
     batch_dim, dim = matrix.shape[:2]
     num_indices = int(np.log2(dim))
     rho_dim = 2 * num_indices
