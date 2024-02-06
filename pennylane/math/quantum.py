@@ -278,6 +278,11 @@ def partial_trace(matrix, indices, c_dtype="complex128"):
            [[1.+0.j, 0.+0.j],
             [0.+0.j, 0.+0.j]]])>
     """
+    if qml.math.ndim(matrix)==2:
+        batch_dim = 1
+        dim = len(matrix)
+    else:
+        batch_dim, dim = matrix.shape[:2]
     # Autograd does not support same indices sum in backprop, and tensorflow
     # has a limit of 8 dimensions if same indices are used
     matrix = cast(matrix, dtype=c_dtype)
