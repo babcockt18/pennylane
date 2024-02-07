@@ -24,15 +24,23 @@ import pennylane as qml
 from pennylane import numpy as pnp
 
 # Import interfaces
-autograd = pytest.importorskip("autograd")
+# autograd = pytest.importorskip("autograd")
 tf = pytest.importorskip("tensorflow")
 torch = pytest.importorskip("torch")
 jax = pytest.importorskip("jax")
-jnp = pytest.importorskip("jax.numpy")
+# jnp = pytest.importorskip("jax.numpy")
 
 # Define a list of dtypes to test
 dtypes = ["complex64", "complex128"]
-array_funcs = [lambda x: x, np.array, pnp.array, jnp.array, torch.tensor, tf.Variable, tf.constant]
+
+# qml.math.asarrays = [lambda x: x, np.array, pnp.array, jnp.array, torch.tensor, tf.Variable, tf.constant]
+ml_frameworks_list = [
+    "numpy",
+    pytest.param("autograd", marks=pytest.mark.autograd),
+    pytest.param("jax", marks=pytest.mark.jax),
+    pytest.param("torch", marks=pytest.mark.torch),
+    pytest.param("tensorflow", marks=pytest.mark.tf),
+]
 
 Toffoli_broadcasted = np.tensordot([0.1, -4.2j], Toffoli, axes=0)
 CNOT_broadcasted = np.tensordot([1.4], CNOT, axes=0)
@@ -828,87 +836,102 @@ class TestReduceMatrices:
         assert reduced_mat.shape == (2**5, 2**5)
 
 
+@pytest.mark.parametrize("ml_framework", ml_frameworks_list)
 class TestPartialTrace:
     """Unit tests for the partial_trace function."""
 
-    @pytest.mark.parametrize("array_func", array_funcs)
-    def test_single_density_matrix(self, array_func):
+    @pytest.mark.parametrize("c_dtype", dtypes)
+    def test_single_density_matrix(self, ml_framework, c_dtype):
         """Test partial trace on a single density matrix."""
         # Define a 2-qubit density matrix
-        rho = array_func(np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]))
+        rho = qml.math.asarray(
+            np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]), like=ml_framework
+        )
 
         # Expected result after tracing out the second qubit
-        expected = array_func(np.array([[[1, 0], [0, 0]]]))
+        expected = qml.math.asarray(np.array([[[1, 0], [0, 0]]]), like=ml_framework)
 
         # Perform the partial trace
-        result = qml.math.quantum.partial_trace(rho, [0])
+        result = qml.math.quantum.partial_trace(rho, [0], c_dtype=c_dtype)
         assert np.allclose(result, expected)
 
-    @pytest.mark.parametrize("array_func", array_funcs)
-    def test_batched_density_matrices(self, array_func):
+    @pytest.mark.parametrize("c_dtype", dtypes)
+    def test_batched_density_matrices(self, ml_framework, c_dtype):
         """Test partial trace on a batch of density matrices."""
         # Define a batch of 2-qubit density matrices
-        rho = array_func(
+        rho = qml.math.asarray(
             np.array(
                 [
                     [[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
                     [[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
                 ]
-            )
+            ),
+            like=ml_framework,
         )
 
-        # rho = array_funcs(rho)
+        # rho = qml.math.asarrays(rho)
         # Expected result after tracing out the first qubit for each matrix
-        expected = array_func(np.array([[[1, 0], [0, 0]], [[1, 0], [0, 0]]]))
+        expected = qml.math.asarray(
+            np.array([[[1, 0], [0, 0]], [[1, 0], [0, 0]]]), like=ml_framework
+        )
 
         # Perform the partial trace
-        result = qml.math.quantum.partial_trace(rho, [1])
+        result = qml.math.quantum.partial_trace(rho, [1], c_dtype=c_dtype)
         assert np.allclose(result, expected)
 
-    @pytest.mark.parametrize("array_func", array_funcs)
-    def test_partial_trace_over_no_wires(self, array_func):
+    @pytest.mark.parametrize("c_dtype", dtypes)
+    def test_partial_trace_over_no_wires(self, ml_framework, c_dtype):
         """Test that tracing over no wires returns the original matrix."""
         # Define a 2-qubit density matrix
-        rho = array_func(np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]))
+        rho = qml.math.asarray(
+            np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]), like=ml_framework
+        )
 
         # Perform the partial trace over no wires
-        result = qml.math.quantum.partial_trace(rho, [])
+        result = qml.math.quantum.partial_trace(rho, [], c_dtype=c_dtype)
         assert np.allclose(result, rho)
 
-    @pytest.mark.parametrize("array_func", array_funcs)
-    def test_partial_trace_over_all_wires(self, array_func):
+    @pytest.mark.parametrize("c_dtype", dtypes)
+    def test_partial_trace_over_all_wires(self, ml_framework, c_dtype):
         """Test that tracing over all wires returns the trace of the matrix."""
         # Define a 2-qubit density matrix
-        rho = array_func(np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]))
+        rho = qml.math.asarray(
+            np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]), like=ml_framework
+        )
         # Expected result after tracing out all qubits
-        expected = array_func(np.array([1]))
+        expected = qml.math.asarray(np.array([1]), like=ml_framework)
 
         # Perform the partial trace over all wires
-        result = qml.math.quantum.partial_trace(rho, [0, 1])
+        result = qml.math.quantum.partial_trace(rho, [0, 1], c_dtype=c_dtype)
         assert np.allclose(result, expected)
 
-    @pytest.mark.parametrize("array_func", array_funcs)
-    def test_invalid_wire_selection(self, array_func):
+    @pytest.mark.parametrize("c_dtype", dtypes)
+    def test_invalid_wire_selection(self, ml_framework, c_dtype):
         """Test that an error is raised for an invalid wire selection."""
         # Define a 2-qubit density matrix
-        rho = array_func(np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]))
+        rho = qml.math.asarray(
+            np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]), like=ml_framework
+        )
 
         # Attempt to trace over an invalid wire
         with pytest.raises(Exception) as e:
-            qml.math.quantum.partial_trace(rho, [2])
+            qml.math.quantum.partial_trace(rho, [2], c_dtype=c_dtype)
             assert e.type in (
                 ValueError,
                 IndexError,
                 tf.python.framework.errors_impl.InvalidArgumentError,
             )
-    
-    @pytest.mark.parametrize("array_func", array_funcs)
-    def test_partial_trace_single_matrix(self, array_func):
+
+    @pytest.mark.parametrize("c_dtype", dtypes)
+    def test_partial_trace_single_matrix(self, ml_framework, c_dtype):
         """Test that partial_trace works on a single matrix."""
         # Define a 2-qubit density matrix
-        rho = array_func(np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]))
-        
-        result = qml.math.quantum.partial_trace(rho, [0])
-        expected = array_func(np.array([[1, 0], [0, 0]]))
+        rho = qml.math.asarray(
+            np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]), like=ml_framework
+        )
+
+        result = qml.math.quantum.partial_trace(rho, [0], c_dtype=c_dtype)
+        expected = qml.math.asarray(np.array([[1, 0], [0, 0]]), like=ml_framework)
 
         assert np.allclose(result, expected)
+    
