@@ -253,6 +253,7 @@ def partial_trace(matrix, indices, c_dtype="complex128"):
         matrix (tensor_like): 2D or 3D density matrix tensor. For a 2D tensor, the size is assumed to be
             ``(batch_dim, 2**n, 2**n)``, for some integer number of wires``n``. In the case of a 3D tensor, the leading dimension is assumed to be a batching dimension
             ``(batch_dim, 2**n, 2**n)``
+
         indices (list(int)): List of indices to be traced.
 
     Returns:
