@@ -931,4 +931,3 @@ class TestPartialTrace:
         expected = qml.math.asarray(np.array([[1, 0], [0, 0]]), like=ml_framework)
 
         assert np.allclose(result, expected)
-    

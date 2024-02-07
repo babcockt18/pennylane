@@ -282,7 +282,7 @@ def partial_trace(matrix, indices, c_dtype="complex128"):
            [[1.+0.j, 0.+0.j],
             [0.+0.j, 0.+0.j]]])>
     """
-    if qml.math.ndim(matrix)==2:
+    if qml.math.ndim(matrix) == 2:
         batch_dim = 1
         dim = len(matrix)
     else:
@@ -319,7 +319,7 @@ def partial_trace(matrix, indices, c_dtype="complex128"):
     reduced_density_matrix = np.reshape(
         matrix, (batch_dim, 2**number_wires_sub, 2**number_wires_sub)
     )
-    return reduced_density_matrix if batch_dim>1 else reduced_density_matrix[0]
+    return reduced_density_matrix if batch_dim > 1 else reduced_density_matrix[0]
 
 
 def _batched_partial_trace_nonrep_indices(matrix, indices):
@@ -327,7 +327,7 @@ def _batched_partial_trace_nonrep_indices(matrix, indices):
     of projectors as same subscripts indices are not supported in autograd backprop.
     """
     # Dimension and reshape
-    if qml.math.ndim(matrix)==2:
+    if qml.math.ndim(matrix) == 2:
         batch_dim = 1
         dim = len(matrix)
     else:
