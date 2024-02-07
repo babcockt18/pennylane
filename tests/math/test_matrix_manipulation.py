@@ -24,11 +24,9 @@ import pennylane as qml
 from pennylane import numpy as pnp
 
 # Import interfaces
-# autograd = pytest.importorskip("autograd")
 tf = pytest.importorskip("tensorflow")
 torch = pytest.importorskip("torch")
 jax = pytest.importorskip("jax")
-# jnp = pytest.importorskip("jax.numpy")
 
 # Define a list of dtypes to test
 dtypes = ["complex64", "complex128"]
