@@ -31,7 +31,6 @@ jax = pytest.importorskip("jax")
 # Define a list of dtypes to test
 dtypes = ["complex64", "complex128"]
 
-# qml.math.asarrays = [lambda x: x, np.array, pnp.array, jnp.array, torch.tensor, tf.Variable, tf.constant]
 ml_frameworks_list = [
     "numpy",
     pytest.param("autograd", marks=pytest.mark.autograd),
