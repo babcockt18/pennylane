@@ -23,10 +23,6 @@ from scipy.sparse import csr_matrix
 import pennylane as qml
 from pennylane import numpy as pnp
 
-# Import interfaces
-tf = pytest.importorskip("tensorflow")
-torch = pytest.importorskip("torch")
-jax = pytest.importorskip("jax")
 
 # Define a list of dtypes to test
 dtypes = ["complex64", "complex128"]
@@ -832,12 +828,13 @@ class TestReduceMatrices:
         assert qml.math.allclose(reduced_mat, expected_matrix)
         assert reduced_mat.shape == (2**5, 2**5)
 
-@pytest.mark.parametrize("c_dtype", dtypes)
+
 @pytest.mark.parametrize("ml_framework", ml_frameworks_list)
 class TestPartialTrace:
     """Unit tests for the partial_trace function."""
 
-    
+
+    @pytest.mark.parametrize("c_dtype", dtypes)
     def test_single_density_matrix(self, ml_framework, c_dtype):
         """Test partial trace on a single density matrix."""
         # Define a 2-qubit density matrix
@@ -852,7 +849,8 @@ class TestPartialTrace:
         result = qml.math.quantum.partial_trace(rho, [0], c_dtype=c_dtype)
         assert np.allclose(result, expected)
 
-    
+
+    @pytest.mark.parametrize("c_dtype", dtypes)
     def test_batched_density_matrices(self, ml_framework, c_dtype):
         """Test partial trace on a batch of density matrices."""
         # Define a batch of 2-qubit density matrices
@@ -876,7 +874,8 @@ class TestPartialTrace:
         result = qml.math.quantum.partial_trace(rho, [1], c_dtype=c_dtype)
         assert np.allclose(result, expected)
 
-    
+
+    @pytest.mark.parametrize("c_dtype", dtypes)
     def test_partial_trace_over_no_wires(self, ml_framework, c_dtype):
         """Test that tracing over no wires returns the original matrix."""
         # Define a 2-qubit density matrix
@@ -888,7 +887,8 @@ class TestPartialTrace:
         result = qml.math.quantum.partial_trace(rho, [], c_dtype=c_dtype)
         assert np.allclose(result, rho)
 
-    
+
+    @pytest.mark.parametrize("c_dtype", dtypes)
     def test_partial_trace_over_all_wires(self, ml_framework, c_dtype):
         """Test that tracing over all wires returns the trace of the matrix."""
         # Define a 2-qubit density matrix
@@ -902,7 +902,8 @@ class TestPartialTrace:
         result = qml.math.quantum.partial_trace(rho, [0, 1], c_dtype=c_dtype)
         assert np.allclose(result, expected)
 
-    
+
+    @pytest.mark.parametrize("c_dtype", dtypes)
     def test_invalid_wire_selection(self, ml_framework, c_dtype):
         """Test that an error is raised for an invalid wire selection."""
         # Define a 2-qubit density matrix
@@ -919,7 +920,8 @@ class TestPartialTrace:
                 tf.python.framework.errors_impl.InvalidArgumentError,
             )
 
-    
+
+    @pytest.mark.parametrize("c_dtype", dtypes)
     def test_partial_trace_single_matrix(self, ml_framework, c_dtype):
         """Test that partial_trace works on a single matrix."""
         # Define a 2-qubit density matrix
