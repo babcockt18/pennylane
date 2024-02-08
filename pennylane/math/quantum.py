@@ -238,7 +238,7 @@ def reduce_dm(density_matrix, indices, check_state=False, c_dtype="complex128"):
 
     # Compute the partial trace
     traced_wires = [x for x in consecutive_indices if x not in indices]
-    density_matrix = partial_trace(density_matrix, traced_wires)
+    density_matrix = partial_trace(density_matrix, traced_wires, c_dtype=c_dtype)
 
     if batch_dim is None:
         density_matrix = density_matrix[0]
@@ -247,7 +247,7 @@ def reduce_dm(density_matrix, indices, check_state=False, c_dtype="complex128"):
     return _permute_dense_matrix(density_matrix, sorted(indices), indices, batch_dim)
 
 
-def partial_trace(density_matrix, indices):
+def partial_trace(density_matrix, indices,  c_dtype="complex128"):
     """Compute the reduced density matrix by tracing out the provided indices.
 
     Args:
@@ -281,11 +281,19 @@ def partial_trace(density_matrix, indices):
     """
     # Autograd does not support same indices sum in backprop, and tensorflow
     # has a limit of 8 dimensions if same indices are used
+    density_matrix = cast(density_matrix, dtype=c_dtype)
+    print(f'This is the dimensionality {qml.math.ndim(density_matrix)}')
+    if qml.math.ndim(density_matrix) == 2:
+        batch_dim = 1
+        dim = len(density_matrix)
+    else:
+        batch_dim, dim = density_matrix.shape[:2]
+
     if get_interface(density_matrix) in ["autograd", "tensorflow"]:
         return _batched_partial_trace_nonrep_indices(density_matrix, indices)
 
     # Dimension and reshape
-    batch_dim, dim = density_matrix.shape[:2]
+    # batch_dim, dim = density_matrix.shape[:2]
     num_indices = int(np.log2(dim))
     rho_dim = 2 * num_indices
 
@@ -317,7 +325,13 @@ def _batched_partial_trace_nonrep_indices(density_matrix, indices):
     of projectors as same subscripts indices are not supported in autograd backprop.
     """
     # Dimension and reshape
-    batch_dim, dim = density_matrix.shape[:2]
+    if qml.math.ndim(density_matrix) == 2:
+        batch_dim = 1
+        dim = len(density_matrix)
+    else:
+        batch_dim, dim = density_matrix.shape[:2]
+
+    # batch_dim, dim = density_matrix.shape[:2]
     num_indices = int(np.log2(dim))
     rho_dim = 2 * num_indices
     density_matrix = np.reshape(density_matrix, [batch_dim] + [2] * 2 * num_indices)
