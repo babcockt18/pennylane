@@ -12,20 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Differentiable quantum functions"""
-# pylint: disable=import-outside-toplevel
-import itertools
 import functools
 
+# pylint: disable=import-outside-toplevel
+import itertools
 from string import ascii_letters as ABC
+
 from autoray import numpy as np
 from numpy import float64
 
 import pennylane as qml
-
-from . import single_dispatch  # pylint:disable=unused-import
+from .matrix_manipulation import _permute_dense_matrix
 from .multi_dispatch import diag, dot, scatter_element_add, einsum, get_interface
 from .utils import is_abstract, allclose, cast, convert_like, cast_like
-from .matrix_manipulation import _permute_dense_matrix
 
 ABC_ARRAY = np.array(list(ABC))
 
@@ -254,12 +253,17 @@ def partial_trace(matrix, indices, c_dtype="complex128"):
         matrix (tensor_like): 2D or 3D density matrix tensor. For a 2D tensor, the size is assumed to be
             ``(batch_dim, 2**n, 2**n)``, for some integer number of wires``n``. In the case of a 3D tensor, the leading dimension is assumed to be a batching dimension
             ``(batch_dim, 2**n, 2**n)``
+
         indices (list(int)): List of indices to be traced.
 
     Returns:
         tensor_like: (reduced) Density matrix of size ``(batch_dim, 2**len(wires), 2**len(wires))``
 
     **Example**
+    >>> x = np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
+    ...
+    >>> partial_trace(x, indices=[0])
+    array([[1, 0], [0, 0]])
 
     >>> x = np.array([[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]])
     ...
@@ -268,7 +272,7 @@ def partial_trace(matrix, indices, c_dtype="complex128"):
 
     >>> x = np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
     ...               [[0, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]])
-    >>> _batched_partial_trace(x, indices=[0])
+    >>> partial_trace(x, indices=[0])
     array([[[1, 0],
             [0, 0]],
 
@@ -277,7 +281,7 @@ def partial_trace(matrix, indices, c_dtype="complex128"):
 
     >>> x = tf.Variable([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
     ...                  [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 1, 0], [0, 0, 0, 0]]], dtype=tf.complex128)
-    >>> _batched_partial_trace(x, indices=[1])
+    >>> batched_partial_trace(x, indices=[1])
     <tf.Tensor: shape=(2, 2, 2), dtype=complex128, numpy=
     array([[[1.+0.j, 0.+0.j],
             [0.+0.j, 0.+0.j]],
@@ -288,7 +292,6 @@ def partial_trace(matrix, indices, c_dtype="complex128"):
     # Autograd does not support same indices sum in backprop, and tensorflow
     # has a limit of 8 dimensions if same indices are used
     matrix = cast(matrix, dtype=c_dtype)
-    print(f"This is the dimensionality {qml.math.ndim(matrix)}")
     if qml.math.ndim(matrix) == 2:
         batch_dim = 1
         dim = len(matrix)
@@ -299,7 +302,6 @@ def partial_trace(matrix, indices, c_dtype="complex128"):
         return _batched_partial_trace_nonrep_indices(matrix, indices)
 
     # Dimension and reshape
-    # batch_dim, dim = density_matrix.shape[:2]
     num_indices = int(np.log2(dim))
     rho_dim = 2 * num_indices
 
@@ -323,7 +325,7 @@ def partial_trace(matrix, indices, c_dtype="complex128"):
     reduced_density_matrix = np.reshape(
         matrix, (batch_dim, 2**number_wires_sub, 2**number_wires_sub)
     )
-    return reduced_density_matrix
+    return reduced_density_matrix if batch_dim > 1 else reduced_density_matrix[0]
 
 
 def _batched_partial_trace_nonrep_indices(matrix, indices):
@@ -337,7 +339,6 @@ def _batched_partial_trace_nonrep_indices(matrix, indices):
     else:
         batch_dim, dim = matrix.shape[:2]
 
-    # batch_dim, dim = density_matrix.shape[:2]
     num_indices = int(np.log2(dim))
     rho_dim = 2 * num_indices
     matrix = np.reshape(matrix, [batch_dim] + [2] * 2 * num_indices)
@@ -1033,6 +1034,90 @@ def _compute_max_entropy(density_matrix, base):
     maximum_entropy = qml.math.log(rank) / div_base
 
     return maximum_entropy
+
+
+def min_entropy(state, indices, base=None, check_state=False, c_dtype="complex128"):
+    r"""Compute the minimum entropy from a density matrix.
+
+    .. math::
+        S_{\text{min}}( \rho ) = -\log( \max_{i} ( p_{i} ))
+
+    Args:
+        state (tensor_like): Density matrix of shape ``(2**N, 2**N)`` or ``(batch_dim, 2**N, 2**N)``.
+        indices (list(int)): List of indices in the considered subsystem.
+        base (float): Base for the logarithm. If None, the natural logarithm is used.
+        check_state (bool): If True, the function will check the state validity (shape and norm).
+        c_dtype (str): Complex floating point precision type.
+
+    Returns:
+        float: The minimum entropy of the considered subsystem.
+
+    **Example**
+
+    The minimum entropy of a subsystem for any state vector can be obtained by first calling
+    :func:`~.math.dm_from_state_vector` on the input. Here is an example for the
+    maximally entangled state, where the subsystem entropy is maximal (default base for log is exponential).
+
+    >>> x = [1, 0, 0, 1] / np.sqrt(2)
+    >>> x = dm_from_state_vector(x)
+    >>> min_entropy(x, indices=[0])
+    0.6931472
+
+    The logarithm base can be changed. For example:
+
+    >>> min_entropy(x, indices=[0], base=2)
+    1.0
+
+    The minimum entropy can be obtained by providing a quantum state as a density matrix. For example:
+
+    >>> y = [[1/2, 0, 0, 1/2], [0, 0, 0, 0], [0, 0, 0, 0], [1/2, 0, 0, 1/2]]
+    >>> min_entropy(y, indices=[0])
+    0.6931472
+
+    The Von Neumann entropy is always greater than the minimum entropy.
+
+    >>> x = [np.cos(np.pi/8), 0, 0, -1j*np.sin(np.pi/8)]
+    >>> x = dm_from_state_vector(x)
+    >>> vn_entropy(x, indices=[1])
+    0.4164955
+    >>> min_entropy(x, indices=[1])
+    0.15834718382037496
+
+    """
+    density_matrix = reduce_dm(state, indices, check_state, c_dtype)
+    minimum_entropy = _compute_min_entropy(density_matrix, base)
+
+    return minimum_entropy
+
+
+def _compute_min_entropy(density_matrix, base):
+    r"""Compute the minimum entropy from a density matrix
+
+    Args:
+        density_matrix (tensor_like): ``(2**N, 2**N)`` tensor density matrix for an integer `N`.
+        base (float, int): Base for the logarithm. If None, the natural logarithm is used.
+
+    Returns:
+        float: Minimum entropy of the density matrix.
+
+    **Example**
+
+    >>> x = [[1/2, 0], [0, 1/2]]
+    >>> _compute_min_entropy(x)
+    0.6931472
+
+    >>> x = [[1/2, 0], [0, 1/2]]
+    >>> _compute_min_entropy(x, base=2)
+    1.0
+    """
+    # Change basis if necessary
+    div_base = np.log(base) if base else 1
+
+    evs, _ = qml.math.linalg.eigh(density_matrix)
+    evs = qml.math.real(evs)
+    minimum_entropy = -qml.math.log(qml.math.max(evs)) / div_base
+
+    return minimum_entropy
 
 
 def trace_distance(state0, state1, check_state=False, c_dtype="complex128"):

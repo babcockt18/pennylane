@@ -76,6 +76,7 @@ from .quantum import (
     sqrt_matrix,
     vn_entropy,
     max_entropy,
+    min_entropy,
     trace_distance,
     partial_trace,
 )
@@ -162,6 +163,7 @@ __all__ = [
     "iscomplex",
     "marginal_prob",
     "max_entropy",
+    "min_entropy",
     "multi_dispatch",
     "mutual_info",
     "ones_like",
