@@ -23,7 +23,6 @@ import pennylane as qml
 from pennylane import numpy as pnp
 
 
-
 # Define a list of dtypes to test
 dtypes = ["complex64", "complex128"]
 
@@ -913,6 +912,7 @@ class TestPartialTrace:
     def test_invalid_wire_selection(self, ml_framework, c_dtype):
         """Test that an error is raised for an invalid wire selection."""
         import tensorflow as tf
+
         # Define a 2-qubit density matrix
         rho = qml.math.asarray(
             np.array([[[1, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]]), like=ml_framework
@@ -921,6 +921,7 @@ class TestPartialTrace:
         # Attempt to trace over an invalid wire
         with pytest.raises(Exception) as e:
             import tensorflow as tf
+
             qml.math.quantum.partial_trace(rho, [2], c_dtype=c_dtype)
             assert e.type in (
                 ValueError,
