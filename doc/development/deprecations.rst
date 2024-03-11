@@ -9,12 +9,20 @@ deprecations are listed below.
 Pending deprecations
 --------------------
 
-* The method ``Operator.validate_subspace(subspace)``, only employed under a specific set of qutrit
-  operators, has been relocated to the ``qml.ops.qutrit.parametric_ops`` module and will be removed
-  from the ``Operator`` class.
+* ``qml.from_qasm_file`` is deprecated. Instead, the user can open the file and then load its content using ``qml.from_qasm``.
 
-  - Deprecated in v0.35
-  - Will be removed in v0.36
+  >>> with open("test.qasm", "r") as f:
+  ...     circuit = qml.from_qasm(f.read())
+
+  - Deprecated in v0.36
+  - Will be removed in v0.37
+
+* The ``qml.load`` function is a general-purpose way to convert circuits into PennyLane from other
+  libraries. It is being deprecated in favour of the more specific functions ``from_qiskit``,
+  ``from_qasm``, etc.
+
+  - Deprecated in v0.36
+  - Will be removed in v0.37
 
 * The private functions ``_pauli_mult``, ``_binary_matrix`` and ``_get_pauli_map`` from the
   ``pauli`` module have been deprecated, as they are no longer used anywhere and the same
@@ -22,37 +30,6 @@ Pending deprecations
 
   - Deprecated in v0.35
   - Will be removed in v0.36
-
-* ``qml.pauli.pauli_mult`` and ``qml.pauli.pauli_mult_with_phase`` are now deprecated. Instead, you
-  should use ``qml.simplify(qml.prod(pauli_1, pauli_2))`` to get the reduced operator.
-
-  >>> op = qml.simplify(qml.prod(qml.PauliX(0), qml.PauliZ(0)))
-  >>> op
-  -1j*(PauliY(wires=[0]))
-  >>> [phase], [base] = op.terms()
-  >>> phase, base
-  (-1j, PauliY(wires=[0]))
-
-  - Deprecated in v0.35
-  - Will be removed in v0.36
-
-* Calling ``qml.matrix`` without providing a ``wire_order`` on objects where the wire order could be
-  ambiguous now raises a warning. This includes tapes with multiple wires, QNodes with a device that
-  does not provide wires, or quantum functions.
-
-  - Deprecated in v0.35
-  - Will raise an error in v0.36
-
-* ``MeasurementProcess.name`` and ``MeasurementProcess.data`` have been deprecated, as they contain
-  dummy values that are no longer needed.
-
-  - Deprecated in v0.35
-  - Will be removed in v0.36
-
-* The contents of ``qml.interfaces`` is moved inside ``qml.workflow``.
-
-  - Contents moved in v0.35
-  - Old import path removed in v0.36
 
 * ``single_tape_transform``, ``batch_transform``, ``qfunc_transform``, and ``op_transform`` are
   deprecated. Instead switch to using the new ``qml.transform`` function. Please refer to
@@ -74,6 +51,44 @@ Pending deprecations
 
 Completed deprecation cycles
 ----------------------------
+
+* Calling ``qml.matrix`` without providing a ``wire_order`` on objects where the wire order could be
+  ambiguous now raises an error. This includes tapes with multiple wires, QNodes with a device that
+  does not provide wires, or quantum functions.
+
+  - Deprecated in v0.35
+  - Raises an error in v0.36
+
+* ``qml.pauli.pauli_mult`` and ``qml.pauli.pauli_mult_with_phase`` are now removed. Instead, you
+  should use ``qml.simplify(qml.prod(pauli_1, pauli_2))`` to get the reduced operator.
+
+  >>> op = qml.simplify(qml.prod(qml.PauliX(0), qml.PauliZ(0)))
+  >>> op
+  -1j*(PauliY(wires=[0]))
+  >>> [phase], [base] = op.terms()
+  >>> phase, base
+  (-1j, PauliY(wires=[0]))
+
+  - Deprecated in v0.35
+  - Removed in v0.36
+
+* ``MeasurementProcess.name`` and ``MeasurementProcess.data`` have been deprecated, as they contain
+  dummy values that are no longer needed.
+  
+  - Deprecated in v0.35
+  - Removed in v0.36
+
+* The contents of ``qml.interfaces`` is moved inside ``qml.workflow``.
+
+  - Contents moved in v0.35
+  - Old import path removed in v0.36
+
+* The method ``Operator.validate_subspace(subspace)``, only employed under a specific set of qutrit
+  operators, has been relocated to the ``qml.ops.qutrit.parametric_ops`` module and has been removed
+  from the ``Operator`` class.
+
+  - Deprecated in v0.35
+  - Removed in v0.36
 
 * ``qml.transforms.one_qubit_decomposition`` and ``qml.transforms.two_qubit_decomposition`` are removed. Instead,
   you should use ``qml.ops.one_qubit_decomposition`` and ``qml.ops.two_qubit_decomposition``.
